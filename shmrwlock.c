@@ -9,7 +9,10 @@
 #include <pthread.h>
 #include <sys/sem.h>
 #include<string.h>
-
+#include <math.h>
+#include <sys/times.h>
+#include <limits.h>
+#define CLK_TCK sysconf(_SC_CLK_TCK)
 
 //shared memory key 등등 주요 요소 정의
 #define SHMKEY1        (key_t)60021    
@@ -25,6 +28,7 @@ int score = 0;
 static int shmid1, shmid2;
 
 clock_t tstart, tmiddle, tend;
+struct tms mytms;
 
 typedef struct databuf {
 	int status; 
@@ -80,7 +84,6 @@ int main(){
 	buf1->timerstatus = 0;
 	buf2->status = 0;
 	buf2->timerstatus = 0;
-	tstart = clock(); 
 	ret = pthread_rwlock_init(&g_rwLock, NULL);
 	if(ret !=0){
 		printf("wrlock init error");		
@@ -156,14 +159,15 @@ int main(){
 
 //서버의 타이머 게임 시작 가능한지 확인 및 일정 score이상되면 종료하고 종료를 알림
 void* servertimer(){
-	clock_t start,end;
+	double start,middle,end;
 	//게임 시작 가능한지 확인ㅇ
 	for(;;){
 		if(buf1->timerstatus==1 && buf2->timerstatus==1){
-			start = clock();
+			start = times(&mytms);
+			middle = times(&mytms);
 			buf1->starttime=start;
 			buf2->starttime=start;
-			printf("서버 시작시간 %lf \n",(double)(tstart) / CLOCKS_PER_SEC);
+			printf("서버 시작시간 %lf \n",(double)(middle-start)/CLK_TCK);
 			break;
 		}
 	}
@@ -171,7 +175,7 @@ void* servertimer(){
 	//점수를 readlock으로 확인하고unlock  특정 값 이상, 이하가 되면 종료후 종료를 client에게 알림
 	for(;;){
 		pthread_rwlock_rdlock(&g_rwLock);
-		end = clock();
+		end =times(&mytms);
 		if(score>=10){
 			printf("score = %d\n",score);
 			strcpy(buf1->d_buf, "승리!!");
@@ -180,7 +184,7 @@ void* servertimer(){
 			buf2->timerstatus=2;
 			printf("buf1->timerstatus : %d\n",buf1->timerstatus);
 			printf("buf2->timerstatus : %d\n",buf2->timerstatus);
-			printf("game 종료 걸린 시간: %lf\n",(double)(end - start) / CLOCKS_PER_SEC);
+			printf("game 종료 걸린 시간: %lf\n",(double)(end-start)/CLK_TCK);
 			pthread_rwlock_unlock(&g_rwLock);
 			printf("unlock\n");
 			pthread_exit(NULL);
@@ -193,7 +197,7 @@ void* servertimer(){
 			buf2->timerstatus=2;
 			printf("buf1->timerstatus : %d\n",buf1->timerstatus);
 			printf("buf2->timerstatus : %d\n",buf2->timerstatus);
-			printf("game 종료 걸린 시간: %lf\n",(double)(end - start) / CLOCKS_PER_SEC);
+			printf("game 종료 걸린 시간: %lf\n",(double)(end-start)/CLK_TCK);
 			pthread_rwlock_unlock(&g_rwLock);
 			printf("unlock\n");
 			pthread_exit(NULL);
@@ -258,9 +262,9 @@ void* clienttimer1(){
 	printf("client timer start \n");
 	for(;;){
 		if(buf1->timerstatus==1 && buf2->timerstatus==1){
-			tstart = clock();
-			tmiddle= tstart;
-			printf("client1 시작시간 %lf \n",(double)(tstart) / CLOCKS_PER_SEC);
+			tstart = times(&mytms);
+			tmiddle= times(&mytms);
+			printf("client1 시작시간 %lf \n",(double)(tmiddle-tstart) /CLK_TCK );
 			pthread_exit(NULL);
 		}
 	}
@@ -271,9 +275,9 @@ void* clienttimer2(){
 	printf("client timer start \n");
 	for(;;){
 		if(buf1->timerstatus==1 && buf2->timerstatus==1){
-			tstart = clock();
-			tmiddle= tstart;
-			printf("client2 시작시간 %lf \n",(double)(tstart) / CLOCKS_PER_SEC);
+			tstart = times(&mytms);
+			tmiddle= times(&mytms);
+			printf("client2 시작시간 %lf \n",(double)(tmiddle-tstart) /CLK_TCK);
 			pthread_exit(NULL);
 		}
 	}
@@ -283,18 +287,18 @@ void* clienttimer2(){
 void* pull1(){
 	printf("client1 pull check\n");
 	for(;;){
-		if(buf1->starttime && buf2->starttime){
-			clock_t delay = clock();
-			double delayedtime = (double)(delay - tmiddle)/CLOCKS_PER_SEC;
+		if(buf1->starttime  && buf2->starttime){
+			clock_t delay = times(&mytms);
+			double delayedtime =(double)(delay-tmiddle) /CLK_TCK;
 			if(buf1->timerstatus==2){
                                 pthread_exit(NULL);
                         }
-			if(delayedtime >1){
+			if(delayedtime >1.0){
 				if(buf1->status == 0){
 					buf1->status=1;
 					printf("client1 changed buf1->status : %d\n",buf1->status);
 				}
-				tmiddle=clock();
+				tmiddle= times(&mytms);
 			}
 		}
 	}
@@ -305,8 +309,8 @@ void* pull2(){
 	printf("client2 pull check\n");
 	for(;;){
 		if(buf1->starttime && buf2->starttime){
-			clock_t delay = clock();
-			double delayedtime = (double)(delay - tmiddle)/CLOCKS_PER_SEC;
+			clock_t delay = times(&mytms);
+                        double delayedtime =(double)(delay-tmiddle) / CLK_TCK;
 			if(buf2->timerstatus==2){
 				pthread_exit(NULL);
 			}
@@ -315,7 +319,7 @@ void* pull2(){
 					buf2->status=1;
 					printf("client2 changed buf2->status : %d\n",buf2->status);
 				}
-				tmiddle=clock();
+				tmiddle= times(&mytms);
 			}
 		}
 
@@ -327,8 +331,8 @@ void* checkfinish1(){
 	printf("check game finished\n");
 	for(;;){
 		if(buf1->timerstatus==2 && buf2->timerstatus==2){
-			tend = clock();
-			printf("client1 timer 걸린시간 : %lf\n",(double)(tend-tstart)/CLOCKS_PER_SEC);
+			tend =times(&mytms); 
+			printf("client1 timer 걸린시간 : %lf\n",(double)(tend-tstart)/CLK_TCK);
 			printf("client1 : %s\n",buf1->d_buf);	
 			pthread_exit(NULL);
 		}
@@ -340,8 +344,8 @@ void* checkfinish2(){
 	printf("check game finished\n");
 	for(;;){
 		if(buf1->timerstatus==2 && buf2->timerstatus==2){
-			tend= clock();
-			printf("client2 timer 걸린시간 : %lf\n",(double)(tend-tstart)/CLOCKS_PER_SEC);
+			tend =times(&mytms);
+			printf("client2 timer 걸린시간 : %lf\n",(double)(tend-tstart)/CLK_TCK);
 			printf("client2 : %s\n",buf2->d_buf);
 			pthread_exit(NULL);
 		}
@@ -358,3 +362,4 @@ void sig_handler(int signo)
 		exit(14);
 	exit(15);
 }
+
