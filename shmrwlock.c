@@ -26,9 +26,10 @@
 //점수및 함수 등  정의
 int score = 0;
 static int shmid1, shmid2;
-
+struct timespec begint, middlet, endt;
 clock_t tstart, tmiddle, tend;
 struct tms mytms;
+struct tms mytms2;
 
 typedef struct databuf {
 	int status; 
@@ -160,14 +161,17 @@ int main(){
 //서버의 타이머 게임 시작 가능한지 확인 및 일정 score이상되면 종료하고 종료를 알림
 void* servertimer(){
 	double start,middle,end;
+	struct timespec begins,middles,ends;
 	//게임 시작 가능한지 확인ㅇ
 	for(;;){
 		if(buf1->timerstatus==1 && buf2->timerstatus==1){
 			start = times(&mytms);
 			middle = times(&mytms);
+			clock_gettime(CLOCK_MONOTONIC, &begins);
+			clock_gettime(CLOCK_MONOTONIC, &middles);
 			buf1->starttime=start;
 			buf2->starttime=start;
-			printf("서버 시작시간 %lf \n",(double)(middle-start)/CLK_TCK);
+			printf("서버 시작시간 %f \n",(middles.tv_sec - begins.tv_sec) + (middles.tv_nsec - begins.tv_nsec) / 1000000000.0 );
 			break;
 		}
 	}
@@ -176,6 +180,7 @@ void* servertimer(){
 	for(;;){
 		pthread_rwlock_rdlock(&g_rwLock);
 		end =times(&mytms);
+		clock_gettime(CLOCK_MONOTONIC, &ends);
 		if(score>=10){
 			printf("score = %d\n",score);
 			strcpy(buf1->d_buf, "승리!!");
@@ -184,7 +189,7 @@ void* servertimer(){
 			buf2->timerstatus=2;
 			printf("buf1->timerstatus : %d\n",buf1->timerstatus);
 			printf("buf2->timerstatus : %d\n",buf2->timerstatus);
-			printf("game 종료 걸린 시간: %lf\n",(double)(end-start)/CLK_TCK);
+			printf("game 종료 걸린 시간: %f\n",(ends.tv_sec - begins.tv_sec) + (ends.tv_nsec - begins.tv_nsec) / 1000000000.0);
 			pthread_rwlock_unlock(&g_rwLock);
 			printf("unlock\n");
 			pthread_exit(NULL);
@@ -197,7 +202,7 @@ void* servertimer(){
 			buf2->timerstatus=2;
 			printf("buf1->timerstatus : %d\n",buf1->timerstatus);
 			printf("buf2->timerstatus : %d\n",buf2->timerstatus);
-			printf("game 종료 걸린 시간: %lf\n",(double)(end-start)/CLK_TCK);
+			printf("game 종료 걸린 시간: %f\n",(ends.tv_sec - begins.tv_sec) + (ends.tv_nsec - begins.tv_nsec) / 1000000000.0);
 			pthread_rwlock_unlock(&g_rwLock);
 			printf("unlock\n");
 			pthread_exit(NULL);
@@ -262,9 +267,9 @@ void* clienttimer1(){
 	printf("client timer start \n");
 	for(;;){
 		if(buf1->timerstatus==1 && buf2->timerstatus==1){
-			tstart = times(&mytms);
-			tmiddle= times(&mytms);
-			printf("client1 시작시간 %lf \n",(double)(tmiddle-tstart) /CLK_TCK );
+			clock_gettime(CLOCK_MONOTONIC, &begint);
+			clock_gettime(CLOCK_MONOTONIC, &middlet);
+			printf("client1 시작시간 %f \n",(middlet.tv_sec - begint.tv_sec) + (middlet.tv_nsec - begint.tv_nsec) / 1000000000.0  );
 			pthread_exit(NULL);
 		}
 	}
@@ -275,9 +280,9 @@ void* clienttimer2(){
 	printf("client timer start \n");
 	for(;;){
 		if(buf1->timerstatus==1 && buf2->timerstatus==1){
-			tstart = times(&mytms);
-			tmiddle= times(&mytms);
-			printf("client2 시작시간 %lf \n",(double)(tmiddle-tstart) /CLK_TCK);
+			clock_gettime(CLOCK_MONOTONIC, &begint);
+                        clock_gettime(CLOCK_MONOTONIC, &middlet);
+			printf("client2 시작시간 %f \n",(middlet.tv_sec - begint.tv_sec) + (middlet.tv_nsec - begint.tv_nsec) / 1000000000.0  );
 			pthread_exit(NULL);
 		}
 	}
@@ -288,17 +293,18 @@ void* pull1(){
 	printf("client1 pull check\n");
 	for(;;){
 		if(buf1->starttime  && buf2->starttime){
-			clock_t delay = times(&mytms);
-			double delayedtime =(double)(delay-tmiddle) /CLK_TCK;
+			struct timespec del;
+			clock_gettime(CLOCK_MONOTONIC, &del);
+			double deltime = (del.tv_sec - middlet.tv_sec) + (del.tv_nsec - middlet.tv_nsec) / 1000000000.0;
 			if(buf1->timerstatus==2){
                                 pthread_exit(NULL);
                         }
-			if(delayedtime >1.0){
+			if(deltime >1.0){
 				if(buf1->status == 0){
 					buf1->status=1;
 					printf("client1 changed buf1->status : %d\n",buf1->status);
 				}
-				tmiddle= times(&mytms);
+				clock_gettime(CLOCK_MONOTONIC, &middlet);
 			}
 		}
 	}
@@ -309,17 +315,18 @@ void* pull2(){
 	printf("client2 pull check\n");
 	for(;;){
 		if(buf1->starttime && buf2->starttime){
-			clock_t delay = times(&mytms);
-                        double delayedtime =(double)(delay-tmiddle) / CLK_TCK;
+			struct timespec del;
+                        clock_gettime(CLOCK_MONOTONIC, &del);
+                        double deltime = (del.tv_sec - middlet.tv_sec) + (del.tv_nsec - middlet.tv_nsec) / 1000000000.0;
 			if(buf2->timerstatus==2){
 				pthread_exit(NULL);
 			}
-			if(delayedtime >0.5){
+			if(deltime >0.5){
 				if(buf2->status == 0){
 					buf2->status=1;
 					printf("client2 changed buf2->status : %d\n",buf2->status);
 				}
-				tmiddle= times(&mytms);
+				clock_gettime(CLOCK_MONOTONIC, &middlet);
 			}
 		}
 
@@ -331,8 +338,8 @@ void* checkfinish1(){
 	printf("check game finished\n");
 	for(;;){
 		if(buf1->timerstatus==2 && buf2->timerstatus==2){
-			tend =times(&mytms); 
-			printf("client1 timer 걸린시간 : %lf\n",(double)(tend-tstart)/CLK_TCK);
+			clock_gettime(CLOCK_MONOTONIC, &endt);
+			printf("client1 timer 걸린시간 : %f\n",(endt.tv_sec - begint.tv_sec) + (endt.tv_nsec - begint.tv_nsec) / 1000000000.0);
 			printf("client1 : %s\n",buf1->d_buf);	
 			pthread_exit(NULL);
 		}
@@ -344,8 +351,8 @@ void* checkfinish2(){
 	printf("check game finished\n");
 	for(;;){
 		if(buf1->timerstatus==2 && buf2->timerstatus==2){
-			tend =times(&mytms);
-			printf("client2 timer 걸린시간 : %lf\n",(double)(tend-tstart)/CLK_TCK);
+			clock_gettime(CLOCK_MONOTONIC, &endt);
+			printf("client2 timer 걸린시간 : %f\n",(endt.tv_sec - begint.tv_sec) + (endt.tv_nsec - begint.tv_nsec) / 1000000000.0);
 			printf("client2 : %s\n",buf2->d_buf);
 			pthread_exit(NULL);
 		}
