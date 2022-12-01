@@ -72,12 +72,10 @@ struct databuf *buf1, *buf2;
 pthread_rwlock_t g_rwLock;
 
 int main(){
-	printf("signal handler\n");
 	signal(SIGINT, sig_handler);
 
 	void* msg;
 
-	printf("pid, buf1,buf2 status, timerstatus setting\n");
 	pid_t pid1, pid2;
 	int ret;
 	getseg(&buf1, &buf2);
@@ -92,20 +90,17 @@ int main(){
 
 
 	//client 1 fork	
-	printf("fork client1\n");
 	switch (pid1 = fork()){
 		case -1:
 			printf("fork client1 error\n");
 			exit(12);
 		case 0:{	//client 2 fork
-			       printf("fork client2\n");
 			       switch(pid2 = fork()){
 				       case -1:
 					       printf("fork client2 error");
 					       exit(13);
 				       case 0:{
 						      //shared memory setting, client1 thread start
-						      printf("client timerstatus, value settings\n");
 						      pthread_t time1_thread, pull1_thread, check1_thread;
 						      buf1->timerstatus=1;
 						      buf1->value=1;
@@ -117,7 +112,6 @@ int main(){
 						      pthread_join(time1_thread,&msg);
 						      pthread_join(pull1_thread,&msg);
 						      pthread_join(check1_thread,&msg);
-						      printf("client1 thread exit\n");
 
 						      break;
 					      }
@@ -130,7 +124,6 @@ int main(){
 						       pthread_join(time2_thread,&msg);
 						       pthread_join(pull2_thread,&msg);
 						       pthread_join(check2_thread,&msg);
-						       printf("client2 thread exit\n");
 						       remobj();
 						       break;
 
@@ -147,7 +140,6 @@ int main(){
 				pthread_join(client1m_thread,&msg);
 				pthread_join(client2m_thread,&msg);
 				pthread_join(timer_thread,&msg);
-				printf("server thread exit\n");
 				break;
 			}
 	}
@@ -187,11 +179,8 @@ void* servertimer(){
 			strcpy(buf2->d_buf,"패배...." );
 			buf1->timerstatus=2;
 			buf2->timerstatus=2;
-			printf("buf1->timerstatus : %d\n",buf1->timerstatus);
-			printf("buf2->timerstatus : %d\n",buf2->timerstatus);
 			printf("game 종료 걸린 시간: %f\n",(ends.tv_sec - begins.tv_sec) + (ends.tv_nsec - begins.tv_nsec) / 1000000000.0);
 			pthread_rwlock_unlock(&g_rwLock);
-			printf("unlock\n");
 			pthread_exit(NULL);
 		}
 		if(score<=-10){
@@ -200,11 +189,8 @@ void* servertimer(){
 			strcpy(buf2->d_buf,"승리!!" );
 			buf1->timerstatus=2;
 			buf2->timerstatus=2;
-			printf("buf1->timerstatus : %d\n",buf1->timerstatus);
-			printf("buf2->timerstatus : %d\n",buf2->timerstatus);
 			printf("game 종료 걸린 시간: %f\n",(ends.tv_sec - begins.tv_sec) + (ends.tv_nsec - begins.tv_nsec) / 1000000000.0);
 			pthread_rwlock_unlock(&g_rwLock);
-			printf("unlock\n");
 			pthread_exit(NULL);
 		}
 		pthread_rwlock_unlock(&g_rwLock);
@@ -213,14 +199,11 @@ void* servertimer(){
 
 //client1에서 당겼는지 확인하고 writelock을 걸고 score값을 변경하고 unlock 특정값 이상,이하가 되면 종료함
 void* pull1Manage(){
-	printf("shared memory 1 \n");
 	for(;;){
 		if(buf1->status == 1){
-			printf("write lock\n");
 			pthread_rwlock_wrlock(&g_rwLock);
 			if(score>=10 ||score<=-10){
 				pthread_rwlock_unlock(&g_rwLock);
-				printf("unlock\n");
 				pthread_exit(NULL);
 			}
 
@@ -229,7 +212,6 @@ void* pull1Manage(){
 			buf1->status = 0;
 			printf("server changed buf1->status : %d\n",buf1->status);
 			pthread_rwlock_unlock(&g_rwLock);
-			printf("unlock\n");
 		}
 		if(buf1->timerstatus==2){
                         pthread_exit(NULL);
@@ -239,14 +221,11 @@ void* pull1Manage(){
 
 //client2에서 당겼는지 확인하고writelock을 걸고 score값을 변경하고 unlock 특정값 이상,이하가 되면 종료함
 void* pull2Manage(){
-	printf("shared memory 2 \n");
 	for(;;){
 		if(buf2->status == 1){
 			pthread_rwlock_wrlock(&g_rwLock);
-			printf("write lock\n");
 			if(score<=-10 ||score>10){
 				pthread_rwlock_unlock(&g_rwLock);
-				printf("unlock\n");
 				pthread_exit(NULL);
 			}
 			score = score+ buf2->value;
@@ -254,7 +233,6 @@ void* pull2Manage(){
 			buf2->status = 0;
 			printf("server changed buf2->status : %d\n",buf2->status);
 			pthread_rwlock_unlock(&g_rwLock);
-			printf("unlock\n");
                 }
 		if(buf2->timerstatus==2){
 			pthread_exit(NULL);
@@ -264,7 +242,6 @@ void* pull2Manage(){
 
 //client1 기준 타이머
 void* clienttimer1(){
-	printf("client timer start \n");
 	for(;;){
 		if(buf1->timerstatus==1 && buf2->timerstatus==1){
 			clock_gettime(CLOCK_MONOTONIC, &begint);
@@ -277,7 +254,6 @@ void* clienttimer1(){
 
 //client2 기준 타이머
 void* clienttimer2(){
-	printf("client timer start \n");
 	for(;;){
 		if(buf1->timerstatus==1 && buf2->timerstatus==1){
 			clock_gettime(CLOCK_MONOTONIC, &begint);
@@ -290,7 +266,6 @@ void* clienttimer2(){
 
 //client1에서 서버에서 받았는지 확인하고 직전 보냈던 시간에서 일정 시간이 지나면 보냄 client은 1초
 void* pull1(){
-	printf("client1 pull check\n");
 	for(;;){
 		if(buf1->starttime  && buf2->starttime){
 			struct timespec del;
@@ -302,7 +277,6 @@ void* pull1(){
 			if(deltime >1.0){
 				if(buf1->status == 0){
 					buf1->status=1;
-					printf("client1 changed buf1->status : %d\n",buf1->status);
 				}
 				clock_gettime(CLOCK_MONOTONIC, &middlet);
 			}
@@ -312,7 +286,6 @@ void* pull1(){
 
 //client2에서 서버에서 받았는지 확인하고 직전 보냈던 시간에서 일정 시간이 지나면 보냄client2 는 0.5초
 void* pull2(){
-	printf("client2 pull check\n");
 	for(;;){
 		if(buf1->starttime && buf2->starttime){
 			struct timespec del;
@@ -324,7 +297,6 @@ void* pull2(){
 			if(deltime >0.5){
 				if(buf2->status == 0){
 					buf2->status=1;
-					printf("client2 changed buf2->status : %d\n",buf2->status);
 				}
 				clock_gettime(CLOCK_MONOTONIC, &middlet);
 			}
@@ -335,7 +307,6 @@ void* pull2(){
 
 //client1에서 게임이 끝났는지 확인하는 함수 결과도 보여줌
 void* checkfinish1(){
-	printf("check game finished\n");
 	for(;;){
 		if(buf1->timerstatus==2 && buf2->timerstatus==2){
 			clock_gettime(CLOCK_MONOTONIC, &endt);
@@ -348,7 +319,6 @@ void* checkfinish1(){
 
 //client2에서 게임이 끝났는지 확인하는 함수 결과도 보여줌
 void* checkfinish2(){
-	printf("check game finished\n");
 	for(;;){
 		if(buf1->timerstatus==2 && buf2->timerstatus==2){
 			clock_gettime(CLOCK_MONOTONIC, &endt);
